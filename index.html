@@ -79,6 +79,20 @@
         font-size: clamp(17px, 3.2vmin, 28px);
       }
     }
+
+  
+    /* Liquid-like tumbling motion */
+    #triangle {
+      transform-origin: center center;
+      will-change: transform;
+      transition: transform 90ms ease-out;
+    }
+    
+    #triangle.tumbling {
+      transition: transform 90ms ease-out;
+    }
+
+    
   </style>
 </head>
 
@@ -113,6 +127,37 @@
       ];
 
       const answer = document.getElementById("answer");
+
+      
+      const triangle = document.getElementById("triangle");
+      
+      let tumbleTimer = null;
+      let tumbleFrame = 0;
+      
+      function tumbleTriangle() {
+        triangle.classList.add("tumbling");
+      
+        // A quick, irregular tumble with a liquid-like sense of inertia.
+        const angle = (Math.random() - 0.5) * 70;
+        const tiltX = (Math.random() - 0.5) * 32;
+        const tiltY = (Math.random() - 0.5) * 32;
+        const driftX = (Math.random() - 0.5) * 36;
+        const driftY = (Math.random() - 0.5) * 36;
+      
+        triangle.style.transform =
+          `perspective(700px) translate(${driftX}px, ${driftY}px) ` +
+          `rotateX(${tiltX}deg) rotateY(${tiltY}deg) rotate(${angle}deg)`;
+      
+        clearTimeout(tumbleTimer);
+      
+        tumbleTimer = setTimeout(() => {
+          triangle.style.transform =
+            "perspective(700px) translate(0, 0) rotateX(0deg) rotateY(0deg) rotate(0deg)";
+      
+          tumbleTimer = null;
+        }, 160);
+      }
+
 
       let previousAnswer = -1;
       let motionEnabled = false;
@@ -149,6 +194,7 @@
         if (range >= 12 && now - lastTrigger >= 1200) {
           lastTrigger = now;
           ySamples = [];
+          tumbleTriangle();
           showAnswer();
         }
       }
