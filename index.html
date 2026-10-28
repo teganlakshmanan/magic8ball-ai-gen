@@ -3,229 +3,47 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#000000">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Magic 8 Ball">
-  <link rel="manifest" href="./manifest.json">
-  <title>Magic 8 Ball</title>
-
-  <style>
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    html, body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #000;
-      overscroll-behavior: none;
-    }
-
-    body {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #000;
-      color: white;
-      font-family: Arial, Helvetica, sans-serif;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: manipulation;
-    }
-
-    #triangle {
-      position: relative;
-      width: min(88vw, 78vh);
-      height: min(79vw, 70vh);
-      max-width: 700px;
-      max-height: 650px;
-      background: #064cff;
-      clip-path: polygon(0 0, 100% 0, 50% 100%);
-      -webkit-clip-path: polygon(0 0, 100% 0, 50% 100%);
-      flex-shrink: 0;
-    }
-
-    #answer {
-      position: absolute;
-      top: 12%;
-      left: 19%;
-      width: 62%;
-      height: 49%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      color: #fff;
-      font-size: clamp(17px, 3.4vmin, 30px);
-      font-weight: 700;
-      line-height: 1.15;
-      overflow-wrap: break-word;
-      overflow: hidden;
-    }
-
-    @media (orientation: landscape) {
-      #triangle {
-        width: min(72vh, 75vw);
-        height: min(65vh, 68vw);
-      }
-
-      #answer {
-        font-size: clamp(17px, 3.2vmin, 28px);
-      }
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Motion Test</title>
 </head>
-
-<body>
-  <main id="triangle">
-    <div id="answer"></div>
-  </main>
+<body style="background:black;color:white;font:20px sans-serif;padding:24px">
+  <button id="start" style="font-size:22px;padding:16px">
+    Start motion test
+  </button>
+  <pre id="result" style="white-space:pre-wrap">Not started</pre>
 
   <script>
-    (() => {
-      "use strict";
+    const result = document.getElementById("result");
 
-      const answers = [
-        "It is certain",
-        "It is decidedly so",
-        "Without a doubt",
-        "Yes, definitely",
-        "You may rely on it",
-        "As I see it, yes",
-        "Most likely",
-        "Outlook good",
-        "Yes",
-        "Signs point to yes",
-        "Reply hazy, try again",
-        "Ask again later",
-        "Better not tell you now",
-        "Cannot predict now",
-        "Concentrate and ask again",
-        "Don't count on it",
-        "My reply is no",
-        "My sources say no",
-        "Outlook not so good",
-        "Very doubtful"
-      ];
+    document.getElementById("start").addEventListener("click", async () => {
+      result.textContent = "Requesting access...";
 
-      const answerElement = document.getElementById("answer");
-
-      let lastAnswer = -1;
-      let lastShakeTime = 0;
-      let motionEnabled = false;
-      let requestingPermission = false;
-      let previous = null;
-      let lastMovement = 0;
-      let shakeEnergy = 0;
-
-      function showAnswer() {
-        let next;
-        do {
-          next = Math.floor(Math.random() * answers.length);
-        } while (next === lastAnswer);
-
-        lastAnswer = next;
-        answerElement.textContent = answers[next];
-      }
-
-      function onMotion(event) {
-        const a = event.accelerationIncludingGravity
-          || event.acceleration;
-
-        if (!a || a.x == null || a.y == null || a.z == null) {
+      try {
+        if (typeof DeviceMotionEvent === "undefined") {
+          result.textContent = "DeviceMotionEvent is unavailable";
           return;
         }
 
-        const now = Date.now();
-        const current = { x: a.x, y: a.y, z: a.z };
+        if (typeof DeviceMotionEvent.requestPermission === "function") {
+          const permission = await DeviceMotionEvent.requestPermission();
+          result.textContent = "Permission: " + permission;
 
-        if (!previous) {
-          previous = current;
-          return;
+          if (permission !== "granted") return;
         }
 
-        const dx = current.x - previous.x;
-        const dy = current.y - previous.y;
-        const dz = current.z - previous.z;
-
-        const change = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-        previous = current;
-
-        // Look for a strong, quick change in movement.
-        if (change > 7.5) {
-          shakeEnergy += change;
-          lastMovement = now;
-        }
-
-        // Several quick movements make a shake.
-        if (now - lastMovement > 350) {
-          shakeEnergy = 0;
-        }
-
-        if (
-          shakeEnergy > 18 &&
-          now - lastShakeTime > 1100
-        ) {
-          lastShakeTime = now;
-          shakeEnergy = 0;
-          previous = null;
-          showAnswer();
-        }
-      }
-
-      async function enableMotion() {
-        if (motionEnabled || requestingPermission) return;
-        if (!("DeviceMotionEvent" in window)) return;
-
-        requestingPermission = true;
-
-        try {
-          if (
-            typeof DeviceMotionEvent.requestPermission === "function"
-          ) {
-            const result =
-              await DeviceMotionEvent.requestPermission();
-
-            if (result !== "granted") {
-              requestingPermission = false;
-              return;
-            }
-          }
-
-          window.addEventListener("devicemotion", onMotion, true);
-          motionEnabled = true;
-          previous = null;
-        } catch (error) {
-          // Allow another tap to retry permission.
-        }
-
-        requestingPermission = false;
-      }
-
-      // Tap once to activate the iPad's motion sensor.
-      // Tapping does not change the displayed answer.
-      document.addEventListener("pointerdown", enableMotion);
-
-      // Show the first answer immediately.
-      showAnswer();
-
-      // Cache the app for offline use.
-      if ("serviceWorker" in navigator &&
-          location.protocol === "https:") {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js").catch(() => {});
+        window.addEventListener("devicemotion", event => {
+          const a = event.accelerationIncludingGravity;
+          result.textContent = a
+            ? `Motion received!\nX: ${a.x}\nY: ${a.y}\nZ: ${a.z}`
+            : "Motion event received; acceleration unavailable";
         });
+
+        result.textContent += "\nNow shake your device...";
+      } catch (error) {
+        result.textContent =
+          "Error: " + error.name + "\n" + error.message;
       }
-    })();
+    });
   </script>
 </body>
 </html>
