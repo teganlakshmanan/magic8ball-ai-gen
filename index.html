@@ -1,53 +1,201 @@
 
-let previousY = null;
-let lastShake = 0;
-let lastTrigger = 0;
-let peakYChange = 0;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Magic 8 Ball">
+  <link rel="manifest" href="./manifest.json">
+  <title>Magic 8 Ball</title>
 
-function onMotion(event) {
-  const a = event.accelerationIncludingGravity;
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
 
-  if (!a || a.y == null) return;
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      overscroll-behavior: none;
+    }
 
-  const now = Date.now();
-  const currentY = a.y;
+    body {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      font-family: Arial, Helvetica, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
 
-  if (previousY === null) {
-    previousY = currentY;
-    return;
-  }
+    #triangle {
+      position: relative;
+      width: min(88vw, 78vh);
+      height: min(79vw, 70vh);
+      max-width: 700px;
+      max-height: 650px;
+      flex-shrink: 0;
+      background: #064cff;
+      clip-path: polygon(0 0, 100% 0, 50% 100%);
+      -webkit-clip-path: polygon(0 0, 100% 0, 50% 100%);
+    }
 
-  // Measure only Y-axis change since the previous reading.
-  const yChange = Math.abs(currentY - previousY);
-  previousY = currentY;
+    #answer {
+      position: absolute;
+      top: 12%;
+      left: 19%;
+      width: 62%;
+      height: 49%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      text-align: center;
+      font-size: clamp(17px, 3.4vmin, 30px);
+      font-weight: bold;
+      line-height: 1.15;
+      overflow-wrap: break-word;
+      overflow: hidden;
+    }
 
-  // Keep the strongest Y movement during a short shake.
-  if (yChange > peakYChange) {
-    peakYChange = yChange;
-  }
+    @media (orientation: landscape) {
+      #triangle {
+        width: min(72vh, 75vw);
+        height: min(65vh, 68vw);
+      }
 
-  // Require a substantial Y change, ignoring tiny fluctuations.
-  if (yChange >= 12) {
-    lastShake = now;
-  }
+      #answer {
+        font-size: clamp(17px, 3.2vmin, 28px);
+      }
+    }
+  </style>
+</head>
 
-  // Trigger once per shake, with a cooldown to prevent duplicates.
-  if (
-    lastShake &&
-    now - lastShake < 250 &&
-    peakYChange >= 12 &&
-    now - lastTrigger > 1200
-  ) {
-    lastTrigger = now;
-    lastShake = 0;
-    peakYChange = 0;
-    showAnswer();
-  }
+<body>
+  <main id="triangle">
+    <div id="answer"></div>
+  </main>
 
-  // Reset if no significant movement continues.
-  if (now - lastShake > 300) {
-    lastShake = 0;
-    peakYChange = 0;
-  }
-}
+  <script>
+    (() => {
+      const answers = [
+        "It is certain",
+        "It is decidedly so",
+        "Without a doubt",
+        "Yes, definitely",
+        "You may rely on it",
+        "As I see it, yes",
+        "Most likely",
+        "Outlook good",
+        "Yes",
+        "Signs point to yes",
+        "Reply hazy, try again",
+        "Ask again later",
+        "Better not tell you now",
+        "Cannot predict now",
+        "Concentrate and ask again",
+        "Don't count on it",
+        "My reply is no",
+        "My sources say no",
+        "Outlook not so good",
+        "Very doubtful"
+      ];
+
+      const answer = document.getElementById("answer");
+
+      let previousAnswer = -1;
+      let motionEnabled = false;
+      let requesting = false;
+      let ySamples = [];
+      let lastTrigger = 0;
+
+      function showAnswer() {
+        let next;
+        do {
+          next = Math.floor(Math.random() * answers.length);
+        } while (next === previousAnswer);
+
+        previousAnswer = next;
+        answer.textContent = answers[next];
+      }
+
+      function onMotion(event) {
+        const data = event.accelerationIncludingGravity;
+        if (!data || data.y == null) return;
+
+        const now = Date.now();
+
+        // Track ONLY Y-axis readings over a short time window.
+        ySamples.push({ y: data.y, time: now });
+        ySamples = ySamples.filter(s => now - s.time <= 400);
+
+        if (ySamples.length < 3) return;
+
+        const values = ySamples.map(s => s.y);
+        const range = Math.max(...values) - Math.min(...values);
+
+        // Ignore small fluctuations. Require a large Y-axis change.
+        if (range >= 12 && now - lastTrigger >= 1200) {
+          lastTrigger = now;
+          ySamples = [];
+          showAnswer();
+        }
+      }
+
+      async function startMotion() {
+        if (motionEnabled || requesting) return;
+        if (typeof DeviceMotionEvent === "undefined") return;
+
+        requesting = true;
+
+        try {
+          if (
+            typeof DeviceMotionEvent.requestPermission === "function"
+          ) {
+            const permission =
+              await DeviceMotionEvent.requestPermission();
+
+            if (permission !== "granted") {
+              requesting = false;
+              return;
+            }
+          }
+
+          window.addEventListener("devicemotion", onMotion);
+          motionEnabled = true;
+        } catch (_) {
+          // Keep the screen free of messages.
+        }
+
+        requesting = false;
+      }
+
+      // First tap enables motion access; it does not change the answer.
+      document.addEventListener("pointerdown", startMotion);
+
+      // Show the first answer immediately.
+      showAnswer();
+
+      // Register offline support.
+      if ("serviceWorker" in navigator &&
+          location.protocol === "https:") {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js").catch(() => {});
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
 
