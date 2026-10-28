@@ -1,5 +1,5 @@
 
-const CACHE_NAME = "magic-eight-ball-v1";
+const CACHE_NAME = "magic-eight-ball-v2";
 
 const APP_FILES = [
   "./",
