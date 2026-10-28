@@ -34,7 +34,7 @@
       align-items: center;
       justify-content: center;
       background: #000;
-      color: #fff;
+      color: white;
       font-family: Arial, Helvetica, sans-serif;
       user-select: none;
       -webkit-user-select: none;
@@ -85,7 +85,7 @@
 </head>
 
 <body>
-  <main id="triangle" aria-label="Magic 8 Ball">
+  <main id="triangle">
     <div id="answer"></div>
   </main>
 
@@ -120,14 +120,14 @@
 
       let lastAnswer = -1;
       let lastShakeTime = 0;
-      let permissionRequested = false;
       let motionEnabled = false;
-      let baseline = null;
+      let requestingPermission = false;
+      let previous = null;
+      let lastMovement = 0;
+      let shakeEnergy = 0;
 
       function showAnswer() {
         let next;
-
-        // Avoid repeating the immediately previous answer.
         do {
           next = Math.floor(Math.random() * answers.length);
         } while (next === lastAnswer);
@@ -137,84 +137,92 @@
       }
 
       function onMotion(event) {
-        const acceleration =
-          event.accelerationIncludingGravity;
+        const a = event.accelerationIncludingGravity
+          || event.acceleration;
 
-        if (!acceleration) return;
-
-        const x = acceleration.x;
-        const y = acceleration.y;
-        const z = acceleration.z;
-
-        if (x == null || y == null || z == null) return;
-
-        const now = Date.now();
-
-        if (!baseline) {
-          baseline = { x, y, z };
+        if (!a || a.x == null || a.y == null || a.z == null) {
           return;
         }
 
-        // Estimate sudden movement relative to the recent baseline.
-        const dx = x - baseline.x;
-        const dy = y - baseline.y;
-        const dz = z - baseline.z;
+        const now = Date.now();
+        const current = { x: a.x, y: a.y, z: a.z };
 
-        const strength = Math.sqrt(
-          dx * dx + dy * dy + dz * dz
-        );
+        if (!previous) {
+          previous = current;
+          return;
+        }
 
-        // Smooth the baseline to filter ordinary movement.
-        baseline.x = baseline.x * 0.75 + x * 0.25;
-        baseline.y = baseline.y * 0.75 + y * 0.25;
-        baseline.z = baseline.z * 0.75 + z * 0.25;
+        const dx = current.x - previous.x;
+        const dy = current.y - previous.y;
+        const dz = current.z - previous.z;
 
-        // Require a noticeable shake and allow time between answers.
-        if (strength > 13 && now - lastShakeTime > 1000) {
+        const change = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        previous = current;
+
+        // Look for a strong, quick change in movement.
+        if (change > 7.5) {
+          shakeEnergy += change;
+          lastMovement = now;
+        }
+
+        // Several quick movements make a shake.
+        if (now - lastMovement > 350) {
+          shakeEnergy = 0;
+        }
+
+        if (
+          shakeEnergy > 18 &&
+          now - lastShakeTime > 1100
+        ) {
           lastShakeTime = now;
+          shakeEnergy = 0;
+          previous = null;
           showAnswer();
-          baseline = { x, y, z };
         }
       }
 
       async function enableMotion() {
-        if (permissionRequested) return;
-        permissionRequested = true;
+        if (motionEnabled || requestingPermission) return;
+        if (!("DeviceMotionEvent" in window)) return;
+
+        requestingPermission = true;
 
         try {
           if (
-            typeof DeviceMotionEvent !== "undefined" &&
             typeof DeviceMotionEvent.requestPermission === "function"
           ) {
-            const permission =
+            const result =
               await DeviceMotionEvent.requestPermission();
 
-            if (permission !== "granted") return;
+            if (result !== "granted") {
+              requestingPermission = false;
+              return;
+            }
           }
 
-          if ("DeviceMotionEvent" in window && !motionEnabled) {
-            window.addEventListener("devicemotion", onMotion);
-            motionEnabled = true;
-          }
-        } catch (_) {
-          // Keep the display clean if sensor access is unavailable.
+          window.addEventListener("devicemotion", onMotion, true);
+          motionEnabled = true;
+          previous = null;
+        } catch (error) {
+          // Allow another tap to retry permission.
         }
+
+        requestingPermission = false;
       }
 
-      // iPadOS may require a user gesture before sensor permission
-      // can be requested. The tap itself does not change the answer.
-      document.addEventListener("pointerdown", enableMotion, {
-        passive: true
-      });
+      // Tap once to activate the iPad's motion sensor.
+      // Tapping does not change the displayed answer.
+      document.addEventListener("pointerdown", enableMotion);
 
-      // Start with an answer immediately.
+      // Show the first answer immediately.
       showAnswer();
 
-      // Register the offline cache.
-      if ("serviceWorker" in navigator && location.protocol === "https:") {
+      // Cache the app for offline use.
+      if ("serviceWorker" in navigator &&
+          location.protocol === "https:") {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js")
-            .catch(() => {});
+          navigator.serviceWorker.register("./sw.js").catch(() => {});
         });
       }
     })();
