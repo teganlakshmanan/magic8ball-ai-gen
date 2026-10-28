@@ -1,49 +1,53 @@
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Motion Test</title>
-</head>
-<body style="background:black;color:white;font:20px sans-serif;padding:24px">
-  <button id="start" style="font-size:22px;padding:16px">
-    Start motion test
-  </button>
-  <pre id="result" style="white-space:pre-wrap">Not started</pre>
+let previousY = null;
+let lastShake = 0;
+let lastTrigger = 0;
+let peakYChange = 0;
 
-  <script>
-    const result = document.getElementById("result");
+function onMotion(event) {
+  const a = event.accelerationIncludingGravity;
 
-    document.getElementById("start").addEventListener("click", async () => {
-      result.textContent = "Requesting access...";
+  if (!a || a.y == null) return;
 
-      try {
-        if (typeof DeviceMotionEvent === "undefined") {
-          result.textContent = "DeviceMotionEvent is unavailable";
-          return;
-        }
+  const now = Date.now();
+  const currentY = a.y;
 
-        if (typeof DeviceMotionEvent.requestPermission === "function") {
-          const permission = await DeviceMotionEvent.requestPermission();
-          result.textContent = "Permission: " + permission;
+  if (previousY === null) {
+    previousY = currentY;
+    return;
+  }
 
-          if (permission !== "granted") return;
-        }
+  // Measure only Y-axis change since the previous reading.
+  const yChange = Math.abs(currentY - previousY);
+  previousY = currentY;
 
-        window.addEventListener("devicemotion", event => {
-          const a = event.accelerationIncludingGravity;
-          result.textContent = a
-            ? `Motion received!\nX: ${a.x}\nY: ${a.y}\nZ: ${a.z}`
-            : "Motion event received; acceleration unavailable";
-        });
+  // Keep the strongest Y movement during a short shake.
+  if (yChange > peakYChange) {
+    peakYChange = yChange;
+  }
 
-        result.textContent += "\nNow shake your device...";
-      } catch (error) {
-        result.textContent =
-          "Error: " + error.name + "\n" + error.message;
-      }
-    });
-  </script>
-</body>
-</html>
+  // Require a substantial Y change, ignoring tiny fluctuations.
+  if (yChange >= 12) {
+    lastShake = now;
+  }
+
+  // Trigger once per shake, with a cooldown to prevent duplicates.
+  if (
+    lastShake &&
+    now - lastShake < 250 &&
+    peakYChange >= 12 &&
+    now - lastTrigger > 1200
+  ) {
+    lastTrigger = now;
+    lastShake = 0;
+    peakYChange = 0;
+    showAnswer();
+  }
+
+  // Reset if no significant movement continues.
+  if (now - lastShake > 300) {
+    lastShake = 0;
+    peakYChange = 0;
+  }
+}
+
